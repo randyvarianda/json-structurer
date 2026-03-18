@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image → JSON Structurer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface2: #242836;
+            --border: #2e3348;
+            --text: #e4e6f0;
+            --text-dim: #8b8fa3;
+            --accent: #6c5ce7;
+            --accent-hover: #7e70f0;
+            --success: #00b894;
+            --danger: #e17055;
+            --warning: #fdcb6e;
+            --string-color: #55efc4;
+            --number-color: #74b9ff;
+            --boolean-color: #fd79a8;
+            --null-color: #636e72;
+            --key-color: #dfe6e9;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        header {
+            padding: 20px 32px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        header h1 span.icon { font-size: 24px; }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:hover { background: var(--border); }
+        .btn.primary { background: var(--accent); border-color: var(--accent); }
+        .btn.primary:hover { background: var(--accent-hover); }
+        .btn.danger { border-color: var(--danger); color: var(--danger); }
+        .btn.danger:hover { background: var(--danger); color: white; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .main {
+            display: flex;
+            height: calc(100vh - 65px);
+        }
+
+        /* Left panel: image */
+        .panel-left {
+            width: 40%;
+            min-width: 300px;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .drop-zone {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            background: rgba(108, 92, 231, 0.08);
+        }
+
+        .drop-zone .icon-big {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.4;
+        }
+        .drop-zone p { color: var(--text-dim); font-size: 14px; margin-bottom: 8px; }
+        .drop-zone .hint { font-size: 12px; color: var(--text-dim); opacity: 0.6; }
+
+        .image-preview {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .image-preview.active { display: flex; }
+
+        .image-preview img {
+            flex: 1;
+            object-fit: contain;
+            min-height: 0;
+            padding: 16px;
+            background: #12141c;
+        }
+
+        .image-meta {
+            padding: 10px 16px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-dim);
+            display: flex;
+            gap: 16px;
+        }
+
+        /* Right panel: JSON editor */
+        .panel-right {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+        }
+        .tab {
+            padding: 10px 20px;
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            color: var(--text-dim);
+            transition: all 0.15s;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+        /* Tree editor */
+        .editor-container {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+        }
+
+        .tree-view { display: block; }
+        .raw-view { display: none; }
+        .raw-view.active { display: block; }
+        .tree-view.active { display: block; }
+
+        .json-tree {
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        .tree-node {
+            position: relative;
+        }
+
+        .tree-row {
+            display: flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 4px;
+            gap: 4px;
+            min-height: 28px;
+        }
+        .tree-row:hover { background: var(--surface2); }
+
+        .tree-toggle {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-dim);
+            font-size: 10px;
+            flex-shrink: 0;
+            user-select: none;
+            border-radius: 3px;
+        }
+        .tree-toggle:hover { background: var(--border); }
+        .tree-toggle.collapsed { transform: rotate(-90deg); }
+        .tree-toggle.leaf { visibility: hidden; }
+
+        .tree-key {
+            color: var(--key-color);
+            cursor: text;
+            padding: 1px 4px;
+            border-radius: 3px;
+        }
+        .tree-key:hover { background: rgba(223, 230, 233, 0.1); }
+
+        .tree-colon { color: var(--text-dim); margin: 0 2px; }
+
+        .tree-value {
+            cursor: text;
+            padding: 1px 6px;
+            border-radius: 3px;
+            flex: 1;
+            min-width: 40px;
+        }
+        .tree-value:hover { background: rgba(255,255,255,0.05); }
+        .tree-value.string { color: var(--string-color); }
+        .tree-value.number { color: var(--number-color); }
+        .tree-value.boolean { color: var(--boolean-color); }
+        .tree-value.null { color: var(--null-color); font-style: italic; }
+
+        .tree-type-badge {
+            font-size: 10px;
+            color: var(--text-dim);
+            opacity: 0.5;
+            margin-left: 8px;
+        }
+
+        .tree-children {
+            padding-left: 24px;
+            border-left: 1px solid var(--border);
+            margin-left: 17px;
+        }
+        .tree-children.collapsed { display: none; }
+
+        .tree-actions {
+            display: none;
+            gap: 4px;
+            margin-left: auto;
+        }
+        .tree-row:hover .tree-actions { display: flex; }
+
+        .tree-action-btn {
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .tree-action-btn:hover { background: var(--border); color: var(--text); }
+        .tree-action-btn.delete:hover { color: var(--danger); }
+
+        .inline-edit {
+            background: var(--surface2);
+            border: 1px solid var(--accent);
+            color: var(--text);
+            font-family: inherit;
+            font-size: inherit;
+            padding: 1px 6px;
+            border-radius: 3px;
+            outline: none;
+            min-width: 60px;
+        }
+
+        /* Array index */
+        .tree-index {
+            color: var(--text-dim);
+            font-size: 11px;
+            opacity: 0.5;
+            min-width: 20px;
+        }
+
+        /* Raw JSON editor */
+        .raw-editor {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            padding: 16px;
+            resize: none;
+            outline: none;
+        }
+
+        /* API key modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            width: 440px;
+            max-width: 90vw;
+        }
+        .modal h2 { font-size: 16px; margin-bottom: 8px; }
+        .modal p { font-size: 13px; color: var(--text-dim); margin-bottom: 16px; }
+
+        .modal input[type="password"],
+        .modal input[type="text"],
+        .modal select {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            margin-bottom: 12px;
+        }
+        .modal input:focus { border-color: var(--accent); }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        /* Loader */
+        .loader {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 60px;
+        }
+        .loader.active { display: flex; }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loader p { color: var(--text-dim); font-size: 14px; }
+
+        /* Empty state */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: var(--text-dim);
+            font-size: 14px;
+            flex: 1;
+        }
+
+        /* Add property form */
+        .add-prop-row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            padding: 4px 8px;
+            margin-top: 2px;
+        }
+        .add-prop-row input {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            outline: none;
+        }
+        .add-prop-row input:focus { border-color: var(--accent); }
+        .add-prop-row select {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-size: 12px;
+            padding: 3px 6px;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 13px;
+            z-index: 200;
+            transform: translateY(80px);
+            opacity: 0;
+            transition: all 0.3s;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { border-color: var(--success); }
+        .toast.error { border-color: var(--danger); color: var(--danger); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .main { flex-direction: column; }
+            .panel-left { width: 100%; height: 40vh; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
+        }
+
+        .provider-select { margin-bottom: 12px; }
+        .provider-select label { font-size: 13px; color: var(--text-dim); display: block; margin-bottom: 6px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1><span class="icon">{ }</span> Image → JSON Structurer</h1>
+    <div class="header-actions">
+        <button class="btn" id="btnSettings" title="API Settings">Settings</button>
+        <button class="btn" id="btnCopy" title="Copy JSON">Copy JSON</button>
+        <button class="btn" id="btnDownload" title="Download JSON">Download</button>
+        <button class="btn primary" id="btnAnalyze" disabled>Analyze Image</button>
+    </div>
+</header>
+
+<div class="main">
+    <div class="panel-left">
+        <div class="panel-header">
+            <span>Source Image</span>
+            <button class="btn" id="btnClearImage" style="padding:4px 10px; font-size:11px; display:none;">Clear</button>
+        </div>
+
+        <div class="drop-zone" id="dropZone">
+            <div class="icon-big">+</div>
+            <p>Drop an image here or click to upload</p>
+            <span class="hint">PNG, JPG, WEBP, GIF — up to 20MB</span>
+            <input type="file" id="fileInput" accept="image/*" hidden>
+        </div>
+
+        <div class="image-preview" id="imagePreview">
+            <img id="previewImg" alt="Preview">
+            <div class="image-meta" id="imageMeta"></div>
+        </div>
+    </div>
+
+    <div class="panel-right">
+        <div class="panel-header">
+            <span>Structured JSON Output</span>
+            <div class="tabs">
+                <div class="tab active" data-tab="tree">Tree Editor</div>
+                <div class="tab" data-tab="raw">Raw JSON</div>
+            </div>
+        </div>
+
+        <div class="loader" id="loader">
+            <div class="spinner"></div>
+            <p>Analyzing image with AI...</p>
+        </div>
+
+        <div class="editor-container" id="editorContainer">
+            <div class="empty-state" id="emptyState">
+                Upload an image and click "Analyze" to generate structured JSON
+            </div>
+
+            <div class="tree-view" id="treeView" style="display:none;"></div>
+            <div class="raw-view" id="rawView" style="display:none;">
+                <textarea class="raw-editor" id="rawEditor" spellcheck="false"></textarea>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- API Key Modal -->
+<div class="modal-overlay" id="apiModal">
+    <div class="modal">
+        <h2>API Configuration</h2>
+        <p>Enter your API key for image analysis. Your key is stored locally in your browser only.</p>
+
+        <div class="provider-select">
+            <label>Provider</label>
+            <select id="providerSelect">
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI (GPT-4o)</option>
+                <option value="google">Google (Gemini)</option>
+            </select>
+        </div>
+
+        <input type="password" id="apiKeyInput" placeholder="Enter API key...">
+
+        <div class="modal-actions">
+            <button class="btn" id="btnCancelModal">Cancel</button>
+            <button class="btn primary" id="btnSaveKey">Save</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──
+let currentJSON = null;
+let imageData = null;
+let imageFile = null;
+
+// ── DOM refs ──
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const imagePreview = document.getElementById('imagePreview');
+const previewImg = document.getElementById('previewImg');
+const imageMeta = document.getElementById('imageMeta');
+const btnClearImage = document.getElementById('btnClearImage');
+const btnAnalyze = document.getElementById('btnAnalyze');
+const btnCopy = document.getElementById('btnCopy');
+const btnDownload = document.getElementById('btnDownload');
+const btnSettings = document.getElementById('btnSettings');
+const apiModal = document.getElementById('apiModal');
+const apiKeyInput = document.getElementById('apiKeyInput');
+const providerSelect = document.getElementById('providerSelect');
+const btnSaveKey = document.getElementById('btnSaveKey');
+const btnCancelModal = document.getElementById('btnCancelModal');
+const loader = document.getElementById('loader');
+const emptyState = document.getElementById('emptyState');
+const treeView = document.getElementById('treeView');
+const rawView = document.getElementById('rawView');
+const rawEditor = document.getElementById('rawEditor');
+const editorContainer = document.getElementById('editorContainer');
+const tabs = document.querySelectorAll('.tab');
+
+// ── Image Upload ──
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+function handleFile(file) {
+    if (!file.type.startsWith('image/')) return toast('Please select an image file', 'error');
+    imageFile = file;
+
+    const reader = new FileReader();
+    reader.onload = e => {
+        imageData = e.target.result;
+        previewImg.src = imageData;
+        dropZone.style.display = 'none';
+        imagePreview.classList.add('active');
+        btnClearImage.style.display = '';
+        btnAnalyze.disabled = false;
+
+        const img = new Image();
+        img.onload = () => {
+            imageMeta.innerHTML = `
+                <span>${file.name}</span>
+                <span>${img.naturalWidth} × ${img.naturalHeight}</span>
+                <span>${(file.size / 1024).toFixed(1)} KB</span>
+            `;
+        };
+        img.src = imageData;
+    };
+    reader.readAsDataURL(file);
+}
+
+btnClearImage.addEventListener('click', () => {
+    imageData = null;
+    imageFile = null;
+    fileInput.value = '';
+    dropZone.style.display = '';
+    imagePreview.classList.remove('active');
+    btnClearImage.style.display = 'none';
+    btnAnalyze.disabled = true;
+});
+
+// ── Tabs ──
+tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const mode = tab.dataset.tab;
+        if (mode === 'tree') {
+            treeView.style.display = '';
+            rawView.style.display = 'none';
+        } else {
+            treeView.style.display = 'none';
+            rawView.style.display = '';
+            if (currentJSON !== null) rawEditor.value = JSON.stringify(currentJSON, null, 2);
+        }
+    });
+});
+
+// Sync raw editor back to tree
+rawEditor.addEventListener('blur', () => {
+    try {
+        const parsed = JSON.parse(rawEditor.value);
+        currentJSON = parsed;
+        renderTree(currentJSON);
+    } catch (e) {
+        toast('Invalid JSON — fix syntax to sync', 'error');
+    }
+});
+
+// ── API Settings ──
+function loadConfig() {
+    return {
+        provider: localStorage.getItem('json_structurer_provider') || 'anthropic',
+        apiKey: localStorage.getItem('json_structurer_key') || ''
+    };
+}
+
+btnSettings.addEventListener('click', () => {
+    const cfg = loadConfig();
+    providerSelect.value = cfg.provider;
+    apiKeyInput.value = cfg.apiKey;
+    apiModal.classList.add('active');
+});
+
+btnCancelModal.addEventListener('click', () => apiModal.classList.remove('active'));
+apiModal.addEventListener('click', e => { if (e.target === apiModal) apiModal.classList.remove('active'); });
+
+btnSaveKey.addEventListener('click', () => {
+    const key = apiKeyInput.value.trim();
+    if (!key) return toast('Please enter an API key', 'error');
+    localStorage.setItem('json_structurer_provider', providerSelect.value);
+    localStorage.setItem('json_structurer_key', key);
+    apiModal.classList.remove('active');
+    toast('Settings saved', 'success');
+});
+
+// ── Analyze ──
+btnAnalyze.addEventListener('click', analyze);
+
+async function analyze() {
+    const cfg = loadConfig();
+    if (!cfg.apiKey) {
+        btnSettings.click();
+        return toast('Please configure your API key first', 'error');
+    }
+    if (!imageData) return;
+
+    loader.classList.add('active');
+    emptyState.style.display = 'none';
+    treeView.style.display = 'none';
+    rawView.style.display = 'none';
+    btnAnalyze.disabled = true;
+
+    const base64 = imageData.split(',')[1];
+    const mediaType = imageData.split(';')[0].split(':')[1];
+
+    const systemPrompt = `You are a visual analysis AI. Analyze the provided image and produce a comprehensive, highly detailed structured JSON object capturing ALL visual information.
+
+Your JSON output must include (where applicable):
+- "image_overview": general description, dominant mood/tone, style
+- "dimensions_and_layout": composition, spatial arrangement, grid/hierarchy
+- "colors": palette with hex codes, dominant/accent/background colors
+- "typography": all text found (exact content), fonts, sizes, styles, hierarchy
+- "objects": every distinct visual element — type, position, size, color, details
+- "people": if any — count, appearance, expression, pose, clothing
+- "background": description, pattern, gradient, texture
+- "icons_and_symbols": any icons, logos, symbols with descriptions
+- "data_visualizations": charts, graphs, tables with extracted data
+- "ui_elements": if it's a UI — buttons, inputs, navigation, cards, modals
+- "branding": logos, brand names, brand colors
+- "text_content": all readable text organized by section/hierarchy
+- "relationships": how elements relate spatially and semantically
+- "technical_details": if relevant — code snippets, formulas, diagrams
+- "metadata": inferred context, purpose, target audience
+
+Be exhaustive. Include precise colors (hex), exact text content, spatial relationships.
+Output ONLY valid JSON — no markdown, no explanation, no wrapping.`;
+
+    try {
+        let result;
+        if (cfg.provider === 'anthropic') {
+            result = await callAnthropic(cfg.apiKey, systemPrompt, base64, mediaType);
+        } else if (cfg.provider === 'openai') {
+            result = await callOpenAI(cfg.apiKey, systemPrompt, base64, mediaType);
+        } else if (cfg.provider === 'google') {
+            result = await callGoogle(cfg.apiKey, systemPrompt, base64, mediaType);
+        }
+
+        currentJSON = result;
+        renderTree(currentJSON);
+        treeView.style.display = '';
+        // activate tree tab
+        tabs.forEach(t => t.classList.remove('active'));
+        tabs[0].classList.add('active');
+        rawView.style.display = 'none';
+        toast('Analysis complete', 'success');
+    } catch (err) {
+        console.error(err);
+        toast('Analysis failed: ' + err.message, 'error');
+        emptyState.style.display = '';
+    } finally {
+        loader.classList.remove('active');
+        btnAnalyze.disabled = false;
+    }
+}
+
+async function callAnthropic(apiKey, system, base64, mediaType) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 8192,
+            system,
+            messages: [{
+                role: 'user',
+                content: [
+                    { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+                    { type: 'text', text: 'Analyze this image and output structured JSON with every visual detail.' }
+                ]
+            }]
+        })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const text = data.content[0].text;
+    return JSON.parse(text);
+}
+
+async function callOpenAI(apiKey, system, base64, mediaType) {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+            model: 'gpt-4o',
+            max_tokens: 8192,
+            response_format: { type: 'json_object' },
+            messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: [
+                    { type: 'image_url', image_url: { url: `data:${mediaType};base64,${base64}` } },
+                    { type: 'text', text: 'Analyze this image and output structured JSON with every visual detail.' }
+                ]}
+            ]
+        })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return JSON.parse(data.choices[0].message.content);
+}
+
+async function callGoogle(apiKey, system, base64, mediaType) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            system_instruction: { parts: [{ text: system }] },
+            contents: [{ parts: [
+                { inline_data: { mime_type: mediaType, data: base64 } },
+                { text: 'Analyze this image and output structured JSON with every visual detail.' }
+            ]}],
+            generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 8192 }
+        })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const text = data.candidates[0].content.parts[0].text;
+    return JSON.parse(text);
+}
+
+// ── Tree Renderer ──
+function renderTree(data) {
+    treeView.innerHTML = '';
+    const root = buildNode(data, null, null, []);
+    treeView.appendChild(root);
+}
+
+function buildNode(value, key, parentObj, path) {
+    const container = document.createElement('div');
+    container.className = 'tree-node';
+
+    const row = document.createElement('div');
+    row.className = 'tree-row';
+
+    const type = getType(value);
+    const isExpandable = type === 'object' || type === 'array';
+
+    // Toggle
+    const toggle = document.createElement('span');
+    toggle.className = 'tree-toggle' + (isExpandable ? '' : ' leaf');
+    toggle.textContent = '▼';
+    row.appendChild(toggle);
+
+    // Key
+    if (key !== null) {
+        if (typeof key === 'number') {
+            const idx = document.createElement('span');
+            idx.className = 'tree-index';
+            idx.textContent = key;
+            row.appendChild(idx);
+        } else {
+            const keyEl = document.createElement('span');
+            keyEl.className = 'tree-key';
+            keyEl.textContent = key;
+            keyEl.addEventListener('dblclick', () => startEditKey(keyEl, key, parentObj, path));
+            row.appendChild(keyEl);
+        }
+        const colon = document.createElement('span');
+        colon.className = 'tree-colon';
+        colon.textContent = ':';
+        row.appendChild(colon);
+    }
+
+    // Value
+    if (!isExpandable) {
+        const valEl = document.createElement('span');
+        valEl.className = 'tree-value ' + type;
+        valEl.textContent = formatValue(value, type);
+        valEl.addEventListener('dblclick', () => startEditValue(valEl, value, type, key, parentObj, path));
+        row.appendChild(valEl);
+    } else {
+        const badge = document.createElement('span');
+        badge.className = 'tree-type-badge';
+        const entries = type === 'array' ? value.length : Object.keys(value).length;
+        badge.textContent = type === 'array' ? `[${entries}]` : `{${entries}}`;
+        row.appendChild(badge);
+    }
+
+    // Action buttons
+    const actions = document.createElement('span');
+    actions.className = 'tree-actions';
+
+    if (isExpandable) {
+        const addBtn = document.createElement('button');
+        addBtn.className = 'tree-action-btn';
+        addBtn.textContent = '+';
+        addBtn.title = 'Add child';
+        addBtn.addEventListener('click', () => addChild(value, type, path, container));
+        actions.appendChild(addBtn);
+    }
+
+    if (parentObj !== null) {
+        const delBtn = document.createElement('button');
+        delBtn.className = 'tree-action-btn delete';
+        delBtn.textContent = '×';
+        delBtn.title = 'Delete';
+        delBtn.addEventListener('click', () => {
+            if (Array.isArray(parentObj)) {
+                parentObj.splice(key, 1);
+            } else {
+                delete parentObj[key];
+            }
+            renderTree(currentJSON);
+        });
+        actions.appendChild(delBtn);
+    }
+
+    row.appendChild(actions);
+    container.appendChild(row);
+
+    // Children
+    if (isExpandable) {
+        const children = document.createElement('div');
+        children.className = 'tree-children';
+
+        if (type === 'array') {
+            value.forEach((item, i) => {
+                children.appendChild(buildNode(item, i, value, [...path, i]));
+            });
+        } else {
+            Object.keys(value).forEach(k => {
+                children.appendChild(buildNode(value[k], k, value, [...path, k]));
+            });
+        }
+
+        toggle.addEventListener('click', () => {
+            toggle.classList.toggle('collapsed');
+            children.classList.toggle('collapsed');
+        });
+
+        container.appendChild(children);
+    }
+
+    return container;
+}
+
+function getType(v) {
+    if (v === null) return 'null';
+    if (Array.isArray(v)) return 'array';
+    return typeof v;
+}
+
+function formatValue(v, type) {
+    if (type === 'string') return `"${v}"`;
+    if (type === 'null') return 'null';
+    return String(v);
+}
+
+function startEditValue(el, oldValue, type, key, parentObj, path) {
+    const input = document.createElement('input');
+    input.className = 'inline-edit';
+    input.value = type === 'string' ? oldValue : String(oldValue);
+
+    const commit = () => {
+        let newVal = input.value;
+        if (type === 'number') newVal = Number(newVal);
+        else if (type === 'boolean') newVal = newVal === 'true';
+        else if (type === 'null' && newVal === 'null') newVal = null;
+
+        if (parentObj !== null) {
+            parentObj[key] = newVal;
+        } else {
+            currentJSON = newVal;
+        }
+        renderTree(currentJSON);
+    };
+
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') commit();
+        if (e.key === 'Escape') renderTree(currentJSON);
+    });
+    input.addEventListener('blur', commit);
+
+    el.replaceWith(input);
+    input.focus();
+    input.select();
+}
+
+function startEditKey(el, oldKey, parentObj, path) {
+    if (!parentObj || Array.isArray(parentObj)) return;
+
+    const input = document.createElement('input');
+    input.className = 'inline-edit';
+    input.value = oldKey;
+
+    const commit = () => {
+        const newKey = input.value.trim();
+        if (newKey && newKey !== oldKey && !(newKey in parentObj)) {
+            const val = parentObj[oldKey];
+            delete parentObj[oldKey];
+            // Preserve order: rebuild
+            const entries = Object.entries(parentObj);
+            Object.keys(parentObj).forEach(k => delete parentObj[k]);
+            let inserted = false;
+            entries.forEach(([k, v]) => {
+                parentObj[k] = v;
+            });
+            parentObj[newKey] = val;
+        }
+        renderTree(currentJSON);
+    };
+
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') commit();
+        if (e.key === 'Escape') renderTree(currentJSON);
+    });
+    input.addEventListener('blur', commit);
+
+    el.replaceWith(input);
+    input.focus();
+    input.select();
+}
+
+function addChild(parentValue, parentType, path, container) {
+    // Show inline add form
+    const existing = container.querySelector('.add-prop-row');
+    if (existing) existing.remove();
+
+    const form = document.createElement('div');
+    form.className = 'add-prop-row';
+
+    let keyInput;
+    if (parentType === 'object') {
+        keyInput = document.createElement('input');
+        keyInput.placeholder = 'key';
+        keyInput.style.width = '100px';
+        form.appendChild(keyInput);
+    }
+
+    const typeSelect = document.createElement('select');
+    ['string', 'number', 'boolean', 'null', 'object', 'array'].forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        typeSelect.appendChild(opt);
+    });
+    form.appendChild(typeSelect);
+
+    const valInput = document.createElement('input');
+    valInput.placeholder = 'value';
+    valInput.style.width = '140px';
+    form.appendChild(valInput);
+
+    const okBtn = document.createElement('button');
+    okBtn.className = 'btn';
+    okBtn.textContent = 'Add';
+    okBtn.style.padding = '3px 10px';
+    okBtn.style.fontSize = '11px';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn';
+    cancelBtn.textContent = '×';
+    cancelBtn.style.padding = '3px 8px';
+    cancelBtn.style.fontSize = '11px';
+
+    form.appendChild(okBtn);
+    form.appendChild(cancelBtn);
+
+    cancelBtn.addEventListener('click', () => form.remove());
+
+    const doAdd = () => {
+        const t = typeSelect.value;
+        let val;
+        if (t === 'string') val = valInput.value;
+        else if (t === 'number') val = Number(valInput.value) || 0;
+        else if (t === 'boolean') val = valInput.value === 'true';
+        else if (t === 'null') val = null;
+        else if (t === 'object') val = {};
+        else if (t === 'array') val = [];
+
+        if (parentType === 'array') {
+            parentValue.push(val);
+        } else {
+            const k = keyInput.value.trim();
+            if (!k) return toast('Key is required', 'error');
+            parentValue[k] = val;
+        }
+        renderTree(currentJSON);
+    };
+
+    okBtn.addEventListener('click', doAdd);
+    valInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
+    if (keyInput) keyInput.addEventListener('keydown', e => { if (e.key === 'Enter') valInput.focus(); });
+
+    container.appendChild(form);
+    (keyInput || valInput).focus();
+}
+
+// ── Copy / Download ──
+btnCopy.addEventListener('click', () => {
+    if (!currentJSON) return toast('No JSON to copy', 'error');
+    navigator.clipboard.writeText(JSON.stringify(currentJSON, null, 2));
+    toast('Copied to clipboard', 'success');
+});
+
+btnDownload.addEventListener('click', () => {
+    if (!currentJSON) return toast('No JSON to download', 'error');
+    const blob = new Blob([JSON.stringify(currentJSON, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'image-analysis.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Downloaded', 'success');
+});
+
+// ── Toast ──
+function toast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + type + ' show';
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Init: prompt for key if not set ──
+window.addEventListener('load', () => {
+    const cfg = loadConfig();
+    if (!cfg.apiKey) {
+        setTimeout(() => btnSettings.click(), 500);
+    }
+});
+</script>
+</body>
+</html>
