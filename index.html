@@ -54,6 +54,8 @@
         .header-actions {
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
 
         .btn {
@@ -245,6 +247,33 @@
         .tree-value.number { color: var(--number-color); }
         .tree-value.boolean { color: var(--boolean-color); }
         .tree-value.null { color: var(--null-color); font-style: italic; }
+
+        .color-value-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            min-width: 40px;
+        }
+        .color-swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.2);
+            cursor: pointer;
+            flex-shrink: 0;
+            position: relative;
+        }
+        .color-swatch input[type="color"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            border: none;
+            padding: 0;
+        }
 
         .tree-type-badge {
             font-size: 10px;
@@ -454,6 +483,49 @@
 
         .provider-select { margin-bottom: 12px; }
         .provider-select label { font-size: 13px; color: var(--text-dim); display: block; margin-bottom: 6px; }
+
+        /* Generated image modal */
+        .gen-image-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .gen-image-overlay.active { display: flex; }
+
+        .gen-image-container {
+            max-width: 80vw;
+            max-height: 75vh;
+            position: relative;
+        }
+        .gen-image-container img {
+            max-width: 100%;
+            max-height: 75vh;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .gen-image-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .gen-loader {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+        .gen-loader .spinner {
+            width: 48px;
+            height: 48px;
+        }
+        .gen-loader p { color: var(--text-dim); font-size: 14px; }
     </style>
 </head>
 <body>
@@ -465,6 +537,7 @@
         <button class="btn" id="btnCopy" title="Copy JSON">Copy JSON</button>
         <button class="btn" id="btnDownload" title="Download JSON">Download</button>
         <button class="btn primary" id="btnAnalyze" disabled>Analyze Image</button>
+        <button class="btn" id="btnGenerate" disabled style="border-color: var(--success); color: var(--success);">Generate Image</button>
     </div>
 </header>
 
@@ -536,6 +609,21 @@
             <button class="btn" id="btnCancelModal">Cancel</button>
             <button class="btn primary" id="btnSaveKey">Save</button>
         </div>
+    </div>
+</div>
+
+<!-- Generated Image Overlay -->
+<div class="gen-image-overlay" id="genOverlay">
+    <div class="gen-loader" id="genLoader">
+        <div class="spinner"></div>
+        <p>Generating image from JSON...</p>
+    </div>
+    <div class="gen-image-container" id="genImageContainer" style="display:none;">
+        <img id="genImage" alt="Generated image">
+    </div>
+    <div class="gen-image-actions" id="genImageActions" style="display:none;">
+        <button class="btn" id="btnDownloadGen">Download Image</button>
+        <button class="btn" id="btnCloseGen">Close</button>
     </div>
 </div>
 
@@ -641,6 +729,7 @@ rawEditor.addEventListener('blur', () => {
         const parsed = JSON.parse(rawEditor.value);
         currentJSON = parsed;
         renderTree(currentJSON);
+        btnGenerate.disabled = false;
     } catch (e) {
         toast('Invalid JSON — fix syntax to sync', 'error');
     }
@@ -732,6 +821,7 @@ Output ONLY valid JSON — no markdown, no explanation, no wrapping.`;
         tabs.forEach(t => t.classList.remove('active'));
         tabs[0].classList.add('active');
         rawView.style.display = 'none';
+        btnGenerate.disabled = false;
         toast('Analysis complete', 'success');
     } catch (err) {
         console.error(err);
@@ -866,11 +956,47 @@ function buildNode(value, key, parentObj, path) {
 
     // Value
     if (!isExpandable) {
-        const valEl = document.createElement('span');
-        valEl.className = 'tree-value ' + type;
-        valEl.textContent = formatValue(value, type);
-        valEl.addEventListener('dblclick', () => startEditValue(valEl, value, type, key, parentObj, path));
-        row.appendChild(valEl);
+        const isColor = type === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value);
+
+        if (isColor) {
+            const wrap = document.createElement('span');
+            wrap.className = 'color-value-wrap';
+
+            const swatch = document.createElement('span');
+            swatch.className = 'color-swatch';
+            swatch.style.background = value;
+
+            const picker = document.createElement('input');
+            picker.type = 'color';
+            picker.value = value.length === 4
+                ? '#' + value[1]+value[1] + value[2]+value[2] + value[3]+value[3]
+                : value.slice(0, 7);
+            picker.addEventListener('input', () => {
+                swatch.style.background = picker.value;
+                valEl.textContent = `"${picker.value}"`;
+            });
+            picker.addEventListener('change', () => {
+                if (parentObj !== null) parentObj[key] = picker.value;
+                else currentJSON = picker.value;
+                renderTree(currentJSON);
+            });
+            swatch.appendChild(picker);
+            wrap.appendChild(swatch);
+
+            const valEl = document.createElement('span');
+            valEl.className = 'tree-value string';
+            valEl.textContent = formatValue(value, type);
+            valEl.addEventListener('dblclick', () => startEditValue(valEl, value, type, key, parentObj, path));
+            wrap.appendChild(valEl);
+
+            row.appendChild(wrap);
+        } else {
+            const valEl = document.createElement('span');
+            valEl.className = 'tree-value ' + type;
+            valEl.textContent = formatValue(value, type);
+            valEl.addEventListener('dblclick', () => startEditValue(valEl, value, type, key, parentObj, path));
+            row.appendChild(valEl);
+        }
     } else {
         const badge = document.createElement('span');
         badge.className = 'tree-type-badge';
@@ -1087,6 +1213,137 @@ function addChild(parentValue, parentType, path, container) {
 
     container.appendChild(form);
     (keyInput || valInput).focus();
+}
+
+// ── Generate Image from JSON ──
+const btnGenerate = document.getElementById('btnGenerate');
+const genOverlay = document.getElementById('genOverlay');
+const genLoader = document.getElementById('genLoader');
+const genImageContainer = document.getElementById('genImageContainer');
+const genImage = document.getElementById('genImage');
+const genImageActions = document.getElementById('genImageActions');
+const btnDownloadGen = document.getElementById('btnDownloadGen');
+const btnCloseGen = document.getElementById('btnCloseGen');
+
+btnGenerate.addEventListener('click', generateImage);
+
+btnCloseGen.addEventListener('click', () => {
+    genOverlay.classList.remove('active');
+    genImageContainer.style.display = 'none';
+    genImageActions.style.display = 'none';
+});
+genOverlay.addEventListener('click', e => {
+    if (e.target === genOverlay) btnCloseGen.click();
+});
+
+btnDownloadGen.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = genImage.src;
+    a.download = 'generated-image.png';
+    a.click();
+    toast('Downloaded', 'success');
+});
+
+function jsonToPrompt(obj, depth = 0) {
+    const parts = [];
+    function walk(val, key) {
+        if (val === null || val === undefined) return;
+        if (typeof val === 'string' && val.trim()) {
+            if (key) parts.push(`${key}: ${val}`);
+            else parts.push(val);
+        } else if (typeof val === 'number' || typeof val === 'boolean') {
+            if (key) parts.push(`${key}: ${val}`);
+        } else if (Array.isArray(val)) {
+            val.forEach(item => walk(item, key));
+        } else if (typeof val === 'object') {
+            Object.entries(val).forEach(([k, v]) => walk(v, k));
+        }
+    }
+    walk(obj, null);
+    return parts.join('. ').slice(0, 3500);
+}
+
+async function generateImage() {
+    if (!currentJSON) return toast('No JSON to generate from', 'error');
+
+    const cfg = loadConfig();
+    if (!cfg.apiKey) {
+        btnSettings.click();
+        return toast('Please configure your API key first', 'error');
+    }
+
+    if (cfg.provider === 'anthropic') {
+        return toast('Anthropic does not support image generation — switch to OpenAI or Google in Settings', 'error');
+    }
+
+    const prompt = 'Create a detailed image based on this description: ' + jsonToPrompt(currentJSON);
+
+    genOverlay.classList.add('active');
+    genLoader.style.display = '';
+    genImageContainer.style.display = 'none';
+    genImageActions.style.display = 'none';
+    btnGenerate.disabled = true;
+
+    try {
+        let imgDataUrl;
+        if (cfg.provider === 'openai') {
+            imgDataUrl = await generateWithDalle(cfg.apiKey, prompt);
+        } else if (cfg.provider === 'google') {
+            imgDataUrl = await generateWithGemini(cfg.apiKey, prompt);
+        }
+
+        genImage.src = imgDataUrl;
+        genLoader.style.display = 'none';
+        genImageContainer.style.display = '';
+        genImageActions.style.display = '';
+        toast('Image generated', 'success');
+    } catch (err) {
+        console.error(err);
+        genOverlay.classList.remove('active');
+        toast('Generation failed: ' + err.message, 'error');
+    } finally {
+        btnGenerate.disabled = false;
+    }
+}
+
+async function generateWithDalle(apiKey, prompt) {
+    const res = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+            model: 'dall-e-3',
+            prompt: prompt.slice(0, 4000),
+            n: 1,
+            size: '1024x1024',
+            response_format: 'b64_json'
+        })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return 'data:image/png;base64,' + data.data[0].b64_json;
+}
+
+async function generateWithGemini(apiKey, prompt) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+        })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const parts = data.candidates[0].content.parts;
+    const imgPart = parts.find(p => p.inline_data);
+    if (!imgPart) throw new Error('No image returned by Gemini');
+    return `data:${imgPart.inline_data.mime_type};base64,${imgPart.inline_data.data}`;
 }
 
 // ── Copy / Download ──
